@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Midi Terminal (polyKeyPress)</title>
+    <style>
+        #textBox {
+            width: 100%;
+            resize:none
+        }
+        #textLine {
+            width: 100%;
+        }
+        div.bottomLeft {
+            width: 50%;
+            float: left;
+        }
+        div.bottomRight {
+            text-align: right;
+        }
+    </style>
+</head>
+<body>
+    <div>
+        input device: <select id = "midiInput"><option value = "-1">no assigned</option></select>
+        output device: <select id = "midiOutput"><option value = "-1">no assigned</option></select>
+        thru input device: <select id = "midiThru"><option value = "-1">no assigned</option></select>
+    </div>
+
+    <div>
+        <textarea id = "textBox" name = "textBox" rows = "25" readonly></textarea>
+    </div>
+
+    <div class = "bottomLeft">
+        <input type = "text" id = "textLine" name = "textLine"/>
+    </div>
+    <div class = "bottomRight">
+        <input type = "button" id = "clearButton" name = "clearButton" value = "clear"/>
+    </div>
+
+    <script>
+        const textbox = document.getElementById("textBox");
+        const clearButton = document.getElementById("clearButton");
+        const textline = document.getElementById("textLine");
+
+        var midiInputs = [];
+        var midiOutputs = [];
+        var outputSelectIndex = null;
+        var inputSelectIndex = null;
+
+        clearButton.addEventListener("click", clearButton_event);
+        textline.addEventListener("keydown", textline_event);
+
+        navigator.requestMIDIAccess({sysex:false}).then(successCallback, errorCallback);
+
+        function clearButton_event(e) {
+            textbox.value = "";
+        }
+
+        function textline_event(e) {
+            if (e.key === "Enter") {
+//                textbox.value += textline.value === "" ? "\n" : textline.value;
+//                textbox.scrollTop = textbox.scrollHeight;
+                if (parseInt(outputSelectIndex) >= 0) {
+                    let str = textline.value === "" ? "\n" : textline.value;
+                    let len = str.length;
+                    let index = 0;
+                    while (len > 1) {
+                        let dt1 = str.charCodeAt(index++);
+                        let dt2 = str.charCodeAt(index++);
+                        sendChar2(outputSelectIndex, dt1, dt2);
+                        len -= 2;
+                    }
+                    if (len > 0) {
+                        let dt = str.charCodeAt(index++);
+                        sendChar1(outputSelectIndex, dt);
+                    }
+                }
+                textline.value = "";
+            }
+            return false;
+        }
+
+        function successCallback(access) {
+
+            // MIDI Input Device List Make
+            var inputIterator = access.inputs.values();
+            for (var obj = inputIterator.next(); obj && !obj.done; obj = inputIterator.next()) {
+                midiInputs.push(obj.value);
+            }
+
+            // MIDI Output Device List Make
+            var outputIterator = access.outputs.values();
+            for (var obj = outputIterator.next(); obj && !obj.done; obj = outputIterator.next()) {
+                midiOutputs.push(obj.value);
+            }
+
+            // MIDI Input Selector Setup
+            var insel = document.querySelector("#midiInput");
+            for(var i = 0; i<midiInputs.length; i++) {
+                insel.appendChild(new Option(midiInputs[i]["name"], i));
+            }
+            insel.addEventListener("change",
+                function(event) {
+                    if(parseInt(inputSelectIndex) >= 0) {
+                        midiInputs[inputSelectIndex].onmidimessage = null;
+                    }
+                    inputSelectIndex = event.target.value;
+                    if(parseInt(inputSelectIndex) >= 0) {
+                        midiInputs[inputSelectIndex].onmidimessage = midiMessageReceived;
+                    }
+                }
+            );
+
+            // MIDI Output Selector Setup
+            var outsel = document.querySelector("#midiOutput");
+            for(var i = 0; i<midiOutputs.length; i++) {
+                outsel.appendChild((new Option(midiOutputs[i]["name"], i)));
+            }
+            outsel.addEventListener("change",
+                function(event) {
+                    outputSelectIndex = event.target.value;
+                }
+            );
+
+        }
+        function errorCallback(msg) {
+            console.log("[ERROR] ", msg);
+        }
+
+        function sendChar2(index, dt1st, dt2nd) {
+            const POLYKEYPRESS = 10;
+            const sts = (POLYKEYPRESS << 4) | 12 | (dt1st & 0x80 ? 1 : 0) | (dt2nd & 0x80 ? 2 : 0);
+            const dt1 = dt1st & 0x7f;
+            const dt2 = dt2nd & 0x7f;
+            const msg = [sts, dt1, dt2];
+            const device = midiOutputs[index];
+            device.send(msg);
+        }
+
+        function sendChar1(index, dt) {
+            const POLYKEYPRESS = 10;
+            const sts = (POLYKEYPRESS << 4) | 11;
+            const dt1 = dt & 0x7f;
+            const dt2 = dt >> 7;
+            const msg = [sts, dt1, dt2];
+            const device = midiOutputs[index];
+            device.send(msg);
+        }
+
+        function midiMessageReceived(event) {
+            const POLYKEYPRESS = 10;
+            const cmd = event.data[0] >> 4;
+            const chn = event.data[0] & 0xf;
+            const dt1 = event.data[1];
+            const dt2 = event.data[2];
+
+            if (cmd === POLYKEYPRESS) {
+                let flag = 0;
+                if (chn == 11) {
+                    const dt = dt1 | (dt2 << 7);
+                    if (dt != 0) {
+                        const c = String.fromCharCode(dt);
+                        textbox.value += c;
+                        flag = 1;
+                    }
+                }
+                else if (chn > 11) {
+                    const dt1h = chn & 1 ? 0x80 : 0;
+                    const dt2h = chn & 2 ? 0x80 : 0;
+                    const dt1st = dt1h | dt1;
+                    const dt2nd = dt2h | dt2;
+                    if (dt1st) {
+                        const c1 = String.fromCharCode(dt1st);
+                        textbox.value += c1;
+                        flag = 1;
+                    }
+                    if (dt2nd) {
+                        const c2 = String.fromCharCode(dt2nd);
+                        textbox.value += c2;
+                        flag = 1;
+                    }
+                }
+                if (flag != 0) {
+                    textbox.scrollTop = textbox.scrollHeight;
+                }
+            }
+        }
+    </script>
+</body>
+</html>
