@@ -48,31 +48,30 @@
         var midiOutputs = [];
         var outputSelectIndex = null;
         var inputSelectIndex = null;
+        var thruSelectIndex = null;
 
         clearButton.addEventListener("click", clearButton_event);
         textline.addEventListener("keydown", textline_event);
 
-        navigator.requestMIDIAccess({sysex:false}).then(successCallback, errorCallback);
+        navigator.requestMIDIAccess({sysex:true}).then(successCallback, errorCallback);
 
-        function clearButton_event(e) {
+        function clearButton_event(e){
             textbox.value = "";
         }
 
-        function textline_event(e) {
-            if (e.key === "Enter") {
-//                textbox.value += textline.value === "" ? "\n" : textline.value;
-//                textbox.scrollTop = textbox.scrollHeight;
-                if (parseInt(outputSelectIndex) >= 0) {
+        function textline_event(e){
+            if(e.key === "Enter"){
+                if(parseInt(outputSelectIndex) >= 0){
                     let str = textline.value === "" ? "\n" : textline.value;
                     let len = str.length;
                     let index = 0;
-                    while (len > 1) {
+                    while(len > 1){
                         let dt1 = str.charCodeAt(index++);
                         let dt2 = str.charCodeAt(index++);
                         sendChar2(outputSelectIndex, dt1, dt2);
                         len -= 2;
                     }
-                    if (len > 0) {
+                    if(len > 0){
                         let dt = str.charCodeAt(index++);
                         sendChar1(outputSelectIndex, dt);
                     }
@@ -82,40 +81,47 @@
             return false;
         }
 
-        function successCallback(access) {
+        function successCallback(access){
 
             // MIDI Input Device List Make
             var inputIterator = access.inputs.values();
-            for (var obj = inputIterator.next(); obj && !obj.done; obj = inputIterator.next()) {
+            for(var obj = inputIterator.next(); obj && !obj.done; obj = inputIterator.next()){
                 midiInputs.push(obj.value);
             }
 
             // MIDI Output Device List Make
             var outputIterator = access.outputs.values();
-            for (var obj = outputIterator.next(); obj && !obj.done; obj = outputIterator.next()) {
+            for(var obj = outputIterator.next(); obj && !obj.done; obj = outputIterator.next()){
                 midiOutputs.push(obj.value);
             }
 
             // MIDI Input Selector Setup
             var insel = document.querySelector("#midiInput");
-            for(var i = 0; i<midiInputs.length; i++) {
+            for(var i = 0; i<midiInputs.length; i++){
                 insel.appendChild(new Option(midiInputs[i]["name"], i));
             }
             insel.addEventListener("change",
                 function(event) {
-                    if(parseInt(inputSelectIndex) >= 0) {
+                    if(parseInt(inputSelectIndex) >= 0){
                         midiInputs[inputSelectIndex].onmidimessage = null;
                     }
-                    inputSelectIndex = event.target.value;
-                    if(parseInt(inputSelectIndex) >= 0) {
-                        midiInputs[inputSelectIndex].onmidimessage = midiMessageReceived;
+                    if((event.target.value != -1) && (event.target.value == thruSelectIndex)){
+                        inputSelectIndex = -1;
+                        insel.value = "-1";
+                        window.alert("Can not select the same input as the selected device.");
+                    }
+                    else{
+                        inputSelectIndex = event.target.value;
+                        if(parseInt(inputSelectIndex) >= 0){
+                            midiInputs[inputSelectIndex].onmidimessage = midiMessageReceived;
+                        }
                     }
                 }
             );
 
             // MIDI Output Selector Setup
             var outsel = document.querySelector("#midiOutput");
-            for(var i = 0; i<midiOutputs.length; i++) {
+            for(var i = 0; i<midiOutputs.length; i++){
                 outsel.appendChild((new Option(midiOutputs[i]["name"], i)));
             }
             outsel.addEventListener("change",
@@ -124,12 +130,35 @@
                 }
             );
 
+            // MIDI thru Selector Setup
+            var thrusel = document.querySelector("#midiThru");
+            for(var i = 0; i<midiInputs.length; i++){
+                thrusel.appendChild((new Option(midiInputs[i]["name"], i)));
+            }
+            thrusel.addEventListener("change",
+                function(event){
+                    if(parseInt(thruSelectIndex) >= 0){
+                        midiInputs[thruSelectIndex].onmidimessage = null;
+                    }
+                    if((event.target.value != -1) && (event.target.value == inputSelectIndex)){
+                        thruSelectIndex = -1;
+                        thrusel.value = "-1";
+                        window.alert("Can not select the same input as the selected device.");
+                    }
+                    else{
+                        thruSelectIndex = event.target.value;
+                        if(parseInt(thruSelectIndex) >= 0){
+                            midiInputs[thruSelectIndex].onmidimessage = midiMessageReceivedThru;
+                        }
+                    }
+                }
+            )
         }
-        function errorCallback(msg) {
+        function errorCallback(msg){
             console.log("[ERROR] ", msg);
         }
 
-        function sendChar2(index, dt1st, dt2nd) {
+        function sendChar2(index, dt1st, dt2nd){
             const POLYKEYPRESS = 10;
             const sts = (POLYKEYPRESS << 4) | 12 | (dt1st & 0x80 ? 1 : 0) | (dt2nd & 0x80 ? 2 : 0);
             const dt1 = dt1st & 0x7f;
@@ -139,7 +168,7 @@
             device.send(msg);
         }
 
-        function sendChar1(index, dt) {
+        function sendChar1(index, dt){
             const POLYKEYPRESS = 10;
             const sts = (POLYKEYPRESS << 4) | 11;
             const dt1 = dt & 0x7f;
@@ -149,42 +178,49 @@
             device.send(msg);
         }
 
-        function midiMessageReceived(event) {
+        function midiMessageReceived(event){
             const POLYKEYPRESS = 10;
             const cmd = event.data[0] >> 4;
             const chn = event.data[0] & 0xf;
             const dt1 = event.data[1];
             const dt2 = event.data[2];
 
-            if (cmd === POLYKEYPRESS) {
+            if(cmd === POLYKEYPRESS){
                 let flag = 0;
-                if (chn == 11) {
+                if(chn == 11){
                     const dt = dt1 | (dt2 << 7);
-                    if (dt != 0) {
+                    if(dt != 0) {
                         const c = String.fromCharCode(dt);
                         textbox.value += c;
                         flag = 1;
                     }
                 }
-                else if (chn > 11) {
+                else if(chn > 11){
                     const dt1h = chn & 1 ? 0x80 : 0;
                     const dt2h = chn & 2 ? 0x80 : 0;
                     const dt1st = dt1h | dt1;
                     const dt2nd = dt2h | dt2;
-                    if (dt1st) {
+                    if(dt1st){
                         const c1 = String.fromCharCode(dt1st);
                         textbox.value += c1;
                         flag = 1;
                     }
-                    if (dt2nd) {
+                    if(dt2nd){
                         const c2 = String.fromCharCode(dt2nd);
                         textbox.value += c2;
                         flag = 1;
                     }
                 }
-                if (flag != 0) {
+                if(flag != 0){
                     textbox.scrollTop = textbox.scrollHeight;
                 }
+            }
+        }
+
+        function midiMessageReceivedThru(event){
+            if(parseInt(outputSelectIndex) >= 0){
+                const device = midiOutputs[outputSelectIndex];
+                device.send(event.data);
             }
         }
     </script>
