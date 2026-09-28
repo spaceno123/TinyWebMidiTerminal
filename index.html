@@ -50,6 +50,10 @@
         var inputSelectIndex = null;
         var thruSelectIndex = null;
 
+        var incomingByteBuffer = []; // 文字ではなく「数字（Byte）」を溜める配列
+        var isRenderLoopRunning = false; // ループが動いているかのフラグ
+        const decoder = new TextDecoder("utf-8"); // 高速バイナリデコーダーを生成
+
         clearButton.addEventListener("click", clearButton_event);
         textline.addEventListener("keydown", textline_event);
 
@@ -186,13 +190,12 @@
             const dt2 = event.data[2];
 
             if(cmd === POLYKEYPRESS){
-                let flag = 0;
+                let added = false;
                 if(chn == 11){
                     const dt = dt1 | (dt2 << 7);
                     if(dt != 0) {
-                        const c = String.fromCharCode(dt);
-                        textbox.value += c;
-                        flag = 1;
+                        incomingByteBuffer.push(dt); // 数字のまま入れる
+                        added = true;
                     }
                 }
                 else if(chn > 11){
@@ -201,18 +204,18 @@
                     const dt1st = dt1h | dt1;
                     const dt2nd = dt2h | dt2;
                     if(dt1st){
-                        const c1 = String.fromCharCode(dt1st);
-                        textbox.value += c1;
-                        flag = 1;
+                        incomingByteBuffer.push(dt1st); // 数字のまま入れる
+                        added = true;
                     }
                     if(dt2nd){
-                        const c2 = String.fromCharCode(dt2nd);
-                        textbox.value += c2;
-                        flag = 1;
+                        incomingByteBuffer.push(dt2nd); // 数字のまま入れる
+                        added = true;
                     }
                 }
-                if(flag != 0){
-                    textbox.scrollTop = textbox.scrollHeight;
+                // 文字が追加され、かつ描画ループが動いていなければループを開始
+                if(added && !isRenderLoopRunning){
+                    isRenderLoopRunning = true;
+                    requestAnimationFrame(updateTextboxRender);
                 }
             }
         }
@@ -221,6 +224,32 @@
             if(parseInt(outputSelectIndex) >= 0){
                 const device = midiOutputs[outputSelectIndex];
                 device.send(event.data);
+            }
+        }
+
+        function updateTextboxRender() {
+            if (incomingByteBuffer.length > 0) {
+                // 数値配列をTypedArray（Uint8Array）に変換
+                const uint8Array = new Uint8Array(incomingByteBuffer);
+                incomingByteBuffer = []; // バッファを即座に空にする
+        
+                // ブラウザの超高速デコーダーで一気に文字列化
+                const newText = decoder.decode(uint8Array);
+        
+                // テキストボックスに反映
+                textbox.value += newText;
+                const MAX_CHARS = 50000; // 最大5万文字に制限
+                if (textbox.value.length > MAX_CHARS) {
+                    // 古い文字（先頭側）を削る
+                    textbox.value = textbox.value.substring(textbox.value.length - MAX_CHARS);
+                }
+                textbox.scrollTop = textbox.scrollHeight;
+            }
+    
+            if (incomingByteBuffer.length > 0) {
+                requestAnimationFrame(updateTextboxRender);
+            } else {
+                isRenderLoopRunning = false;
             }
         }
     </script>
