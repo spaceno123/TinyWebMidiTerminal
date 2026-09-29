@@ -238,11 +238,11 @@
         
                 // テキストボックスに反映
                 textbox.value += newText;
-                const MAX_CHARS = 50000; // 最大5万文字に制限
-                if (textbox.value.length > MAX_CHARS) {
-                    // 古い文字（先頭側）を削る
-                    textbox.value = textbox.value.substring(textbox.value.length - MAX_CHARS);
-                }
+//                const MAX_CHARS = 50000; // 最大5万文字に制限
+//                if (textbox.value.length > MAX_CHARS) {
+//                    // 古い文字（先頭側）を削る
+//                    textbox.value = textbox.value.substring(textbox.value.length - MAX_CHARS);
+//                }
                 textbox.scrollTop = textbox.scrollHeight;
             }
     
