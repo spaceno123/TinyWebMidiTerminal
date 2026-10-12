@@ -29,7 +29,7 @@
     </div>
 
     <div>
-        <textarea id = "textBox" name = "textBox" rows = "25" readonly></textarea>
+        <textarea id = "textBox" name = "textBox" rows = "25"></textarea>
     </div>
 
     <div class = "bottomLeft">
@@ -58,6 +58,16 @@
         textline.addEventListener("keydown", textline_event);
 
         navigator.requestMIDIAccess({sysex:true}).then(successCallback, errorCallback);
+
+        // textBoxへの直接入力を禁止する（右クリックや全選択は残る）
+        textbox.addEventListener("keydown", function(e) {
+            // Ctrl+A（すべて選択）や Ctrl+C（コピー）などのショートカットは許可する
+            if (e.ctrlKey || e.metaKey) {
+                return true; 
+            }
+            // それ以外の直接の文字入力やBackSpaceなどを無効化する
+            e.preventDefault();
+        });
 
         function clearButton_event(e){
             textbox.value = "";
